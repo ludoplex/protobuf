@@ -65,7 +65,7 @@ class DescriptorDatabase(object):
       self._file_desc_protos_by_file[proto_name] = file_desc_proto
     elif self._file_desc_protos_by_file[proto_name] != file_desc_proto:
       raise DescriptorDatabaseConflictingDefinitionError(
-          '%s already added, but with different descriptor.' % proto_name)
+          f'{proto_name} already added, but with different descriptor.')
     else:
       return
 
@@ -150,10 +150,7 @@ class DescriptorDatabase(object):
 
   def _AddSymbol(self, name, file_desc_proto):
     if name in self._file_desc_protos_by_symbol:
-      warn_msg = ('Conflict register for file "' + file_desc_proto.name +
-                  '": ' + name +
-                  ' is already defined in file "' +
-                  self._file_desc_protos_by_symbol[name].name + '"')
+      warn_msg = f'Conflict register for file "{file_desc_proto.name}": {name} is already defined in file "{self._file_desc_protos_by_symbol[name].name}"'
       warnings.warn(warn_msg, RuntimeWarning)
     self._file_desc_protos_by_symbol[name] = file_desc_proto
 
@@ -168,10 +165,9 @@ def _ExtractSymbols(desc_proto, package):
   Yields:
     The fully qualified name found in the descriptor.
   """
-  message_name = package + '.' + desc_proto.name if package else desc_proto.name
+  message_name = f'{package}.{desc_proto.name}' if package else desc_proto.name
   yield message_name
   for nested_type in desc_proto.nested_type:
-    for symbol in _ExtractSymbols(nested_type, message_name):
-      yield symbol
+    yield from _ExtractSymbols(nested_type, message_name)
   for enum_type in desc_proto.enum_type:
     yield '.'.join((message_name, enum_type.name))

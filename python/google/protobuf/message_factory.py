@@ -67,8 +67,7 @@ def GetMessageClass(descriptor):
   Returns:
     A class describing the passed in descriptor.
   """
-  concrete_class = getattr(descriptor, '_concrete_class', None)
-  if concrete_class:
+  if concrete_class := getattr(descriptor, '_concrete_class', None):
     return concrete_class
   return _InternalCreateMessageClass(descriptor)
 

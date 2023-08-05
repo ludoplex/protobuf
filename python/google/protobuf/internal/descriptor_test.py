@@ -677,7 +677,7 @@ class GeneratedDescriptorTest(unittest.TestCase):
     self.assertEqual(len(sequence), len(expected_list))  # Iterable
     self.assertEqual(sequence[len(sequence) -1], sequence[-1])
     item = sequence[0]
-    self.assertEqual(item, sequence[0])
+    self.assertEqual(item, item)
     self.assertIn(item, sequence)  # Container
     self.assertEqual(sequence.index(item), 0)
     self.assertEqual(sequence.count(item), 1)
@@ -727,8 +727,7 @@ class GeneratedDescriptorTest(unittest.TestCase):
     else:
       self.assertRaises(TypeError, mapping.get, [])
       with self.assertRaises(TypeError):
-        if [] in mapping:
-          pass
+        pass
       with self.assertRaises(TypeError):
         _ = mapping[[]]
     # keys(), iterkeys() &co

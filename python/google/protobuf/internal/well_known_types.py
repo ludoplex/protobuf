@@ -67,9 +67,9 @@ class Any(object):
            deterministic=None):
     """Packs the specified message into current Any message."""
     if len(type_url_prefix) < 1 or type_url_prefix[-1] != '/':
-      self.type_url = '%s/%s' % (type_url_prefix, msg.DESCRIPTOR.full_name)
+      self.type_url = f'{type_url_prefix}/{msg.DESCRIPTOR.full_name}'
     else:
-      self.type_url = '%s%s' % (type_url_prefix, msg.DESCRIPTOR.full_name)
+      self.type_url = f'{type_url_prefix}{msg.DESCRIPTOR.full_name}'
     self.value = msg.SerializeToString(deterministic=deterministic)
 
   def Unpack(self, msg):
@@ -118,7 +118,7 @@ class Timestamp(object):
     if (nanos % 1e9) == 0:
       # If there are 0 fractional digits, the fractional
       # point '.' should be omitted when serializing.
-      return result + 'Z'
+      return f'{result}Z'
     if (nanos % 1e6) == 0:
       # Serialize 3 fractional digits.
       return result + '.%03dZ' % (nanos / 1e6)
@@ -149,7 +149,7 @@ class Timestamp(object):
     if timezone_offset == -1:
       raise ValueError(
           'Failed to parse timestamp: missing valid timezone offset.')
-    time_value = value[0:timezone_offset]
+    time_value = value[:timezone_offset]
     # Parse datetime and nanos.
     point_position = time_value.find('.')
     if point_position == -1:
@@ -169,10 +169,7 @@ class Timestamp(object):
       raise ValueError(
           'Failed to parse Timestamp: nanos {0} more than '
           '9 fractional digits.'.format(nano_value))
-    if nano_value:
-      nanos = round(float('0.' + nano_value) * 1e9)
-    else:
-      nanos = 0
+    nanos = round(float(f'0.{nano_value}') * 1e9) if nano_value else 0
     # Parse timezone offsets.
     if value[timezone_offset] == 'Z':
       if len(value) != timezone_offset + 1:
@@ -298,7 +295,7 @@ class Duration(object):
     if (nanos % 1e9) == 0:
       # If there are 0 fractional digits, the fractional
       # point '.' should be omitted when serializing.
-      return result + 's'
+      return f'{result}s'
     if (nanos % 1e6) == 0:
       # Serialize 3 fractional digits.
       return result + '.%03ds' % (nanos / 1e6)
@@ -426,10 +423,7 @@ def _RoundTowardZero(value, divider):
   # 1. This function ensures we always return -2 (closer to zero).
   result = value // divider
   remainder = value % divider
-  if result < 0 and remainder > 0:
-    return result + 1
-  else:
-    return result
+  return result + 1 if result < 0 and remainder > 0 else result
 
 
 def _SetStructValue(struct_value, value):
