@@ -52,8 +52,7 @@ def _GetMessageFromFactory(pool, full_name):
     KeyError, if the proto is not found in the factory's descriptor pool.
   """
   proto_descriptor = pool.FindMessageTypeByName(full_name)
-  proto_cls = message_factory.GetMessageClass(proto_descriptor)
-  return proto_cls
+  return message_factory.GetMessageClass(proto_descriptor)
 
 
 def MakeSimpleProtoClass(fields, full_name=None, pool=None):
@@ -73,8 +72,7 @@ def MakeSimpleProtoClass(fields, full_name=None, pool=None):
   pool_instance = pool or descriptor_pool.DescriptorPool()
   if full_name is not None:
     try:
-      proto_cls = _GetMessageFromFactory(pool_instance, full_name)
-      return proto_cls
+      return _GetMessageFromFactory(pool_instance, full_name)
     except KeyError:
       # The factory's DescriptorPool doesn't know about this class yet.
       pass
@@ -92,15 +90,14 @@ def MakeSimpleProtoClass(fields, full_name=None, pool=None):
   for f_name, f_type in field_items:
     fields_hash.update(f_name.encode('utf-8'))
     fields_hash.update(str(f_type).encode('utf-8'))
-  proto_file_name = fields_hash.hexdigest() + '.proto'
+  proto_file_name = f'{fields_hash.hexdigest()}.proto'
 
   # If the proto is anonymous, use the same hash to name it.
   if full_name is None:
     full_name = ('net.proto2.python.public.proto_builder.AnonymousProto_' +
                  fields_hash.hexdigest())
     try:
-      proto_cls = _GetMessageFromFactory(pool_instance, full_name)
-      return proto_cls
+      return _GetMessageFromFactory(pool_instance, full_name)
     except KeyError:
       # The factory's DescriptorPool doesn't know about this class yet.
       pass

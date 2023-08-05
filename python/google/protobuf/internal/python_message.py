@@ -132,18 +132,7 @@ class GeneratedProtocolMessageType(type):
       raise RuntimeError('The generated code only work with python cpp '
                          'extension, but it is using pure python runtime.')
 
-    # If a concrete class already exists for this descriptor, don't try to
-    # create another.  Doing so will break any messages that already exist with
-    # the existing class.
-    #
-    # The C++ implementation appears to have its own internal `PyMessageFactory`
-    # to achieve similar results.
-    #
-    # This most commonly happens in `text_format.py` when using descriptors from
-    # a custom pool; it calls symbol_database.Global().getPrototype() on a
-    # descriptor which already has an existing concrete class.
-    new_class = getattr(descriptor, '_concrete_class', None)
-    if new_class:
+    if new_class := getattr(descriptor, '_concrete_class', None):
       return new_class
 
     if descriptor.full_name in well_known_types.WKTBASES:
@@ -152,10 +141,9 @@ class GeneratedProtocolMessageType(type):
     _AddSlots(descriptor, dictionary)
 
     superclass = super(GeneratedProtocolMessageType, cls)
-    new_class = superclass.__new__(cls, name, bases, dictionary)
-    return new_class
+    return superclass.__new__(cls, name, bases, dictionary)
 
-  def __init__(cls, name, bases, dictionary):
+  def __init__(self, name, bases, dictionary):
     """Here we perform the majority of our work on the class.
     We add enum getters, an __init__ method, implementations
     of all Message methods, and properties for all fields
@@ -174,40 +162,39 @@ class GeneratedProtocolMessageType(type):
     """
     descriptor = dictionary[GeneratedProtocolMessageType._DESCRIPTOR_KEY]
 
-    # If this is an _existing_ class looked up via `_concrete_class` in the
-    # __new__ method above, then we don't need to re-initialize anything.
-    existing_class = getattr(descriptor, '_concrete_class', None)
-    if existing_class:
-      assert existing_class is cls, (
-          'Duplicate `GeneratedProtocolMessageType` created for descriptor %r'
-          % (descriptor.full_name))
+    if existing_class := getattr(descriptor, '_concrete_class', None):
+      assert existing_class is self, (
+          'Duplicate `GeneratedProtocolMessageType` created for descriptor %r' %
+          (descriptor.full_name))
       return
 
-    cls._decoders_by_tag = {}
+    self._decoders_by_tag = {}
     if (descriptor.has_options and
         descriptor.GetOptions().message_set_wire_format):
-      cls._decoders_by_tag[decoder.MESSAGE_SET_ITEM_TAG] = (
-          decoder.MessageSetItemDecoder(descriptor), None)
+      self._decoders_by_tag[decoder.MESSAGE_SET_ITEM_TAG] = (
+          decoder.MessageSetItemDecoder(descriptor),
+          None,
+      )
 
     # Attach stuff to each FieldDescriptor for quick lookup later on.
     for field in descriptor.fields:
-      _AttachFieldHelpers(cls, field)
+      _AttachFieldHelpers(self, field)
 
     if descriptor.is_extendable and hasattr(descriptor.file, 'pool'):
       extensions = descriptor.file.pool.FindAllExtensions(descriptor)
       for ext in extensions:
-        _AttachFieldHelpers(cls, ext)
+        _AttachFieldHelpers(self, ext)
 
-    descriptor._concrete_class = cls  # pylint: disable=protected-access
-    _AddEnumValues(descriptor, cls)
-    _AddInitMethod(descriptor, cls)
-    _AddPropertiesForFields(descriptor, cls)
-    _AddPropertiesForExtensions(descriptor, cls)
-    _AddStaticMethods(cls)
-    _AddMessageMethods(descriptor, cls)
-    _AddPrivateHelperMethods(descriptor, cls)
+    descriptor._concrete_class = self
+    _AddEnumValues(descriptor, self)
+    _AddInitMethod(descriptor, self)
+    _AddPropertiesForFields(descriptor, self)
+    _AddPropertiesForExtensions(descriptor, self)
+    _AddStaticMethods(self)
+    _AddMessageMethods(descriptor, self)
+    _AddPrivateHelperMethods(descriptor, self)
 
-    superclass = super(GeneratedProtocolMessageType, cls)
+    superclass = super(GeneratedProtocolMessageType, self)
     superclass.__init__(name, bases, dictionary)
 
 
@@ -378,8 +365,7 @@ def _AddEnumValues(descriptor, cls):
 
 def _GetInitializeDefaultForMap(field):
   if field.label != _FieldDescriptor.LABEL_REPEATED:
-    raise ValueError('map_entry set on non-repeated field %s' % (
-        field.name))
+    raise ValueError(f'map_entry set on non-repeated field {field.name}')
   fields_by_name = field.message_type.fields_by_name
   key_checker = type_checkers.GetTypeChecker(fields_by_name['key'])
 
@@ -417,8 +403,9 @@ def _DefaultValueConstructorForField(field):
 
   if field.label == _FieldDescriptor.LABEL_REPEATED:
     if field.has_default_value and field.default_value != []:
-      raise ValueError('Repeated field default value not empty list: %s' % (
-          field.default_value))
+      raise ValueError(
+          f'Repeated field default value not empty list: {field.default_value}'
+      )
     if field.cpp_type == _FieldDescriptor.CPPTYPE_MESSAGE:
       # We can't look at _concrete_class yet since it might not have
       # been set.  (Depends on order in which we initialize the classes).
@@ -453,6 +440,7 @@ def _DefaultValueConstructorForField(field):
     # TODO(protobuf-team): This may be broken since there may not be
     # default_value.  Combine with has_default_value somehow.
     return field.default_value
+
   return MakeScalarDefault
 
 
@@ -461,7 +449,7 @@ def _ReraiseTypeErrorWithFieldName(message_name, field_name):
   exc = sys.exc_info()[1]
   if len(exc.args) == 1 and type(exc) is TypeError:
     # simple TypeError; add field name to exception message
-    exc = TypeError('%s for field %s.%s' % (str(exc), message_name, field_name))
+    exc = TypeError(f'{str(exc)} for field {message_name}.{field_name}')
 
   # re-raise possibly-amended exception with original traceback:
   raise exc.with_traceback(sys.exc_info()[2])
@@ -481,8 +469,7 @@ def _AddInitMethod(message_descriptor, cls):
       try:
         return enum_type.values_by_name[value].number
       except KeyError:
-        raise ValueError('Enum type %s: unknown label "%s"' % (
-            enum_type.full_name, value))
+        raise ValueError(f'Enum type {enum_type.full_name}: unknown label "{value}"')
     return value
 
   def init(self, **kwargs):
@@ -505,8 +492,9 @@ def _AddInitMethod(message_descriptor, cls):
     for field_name, field_value in kwargs.items():
       field = _GetFieldByName(message_descriptor, field_name)
       if field is None:
-        raise TypeError('%s() got an unexpected keyword argument "%s"' %
-                        (message_descriptor.name, field_name))
+        raise TypeError(
+            f'{message_descriptor.name}() got an unexpected keyword argument "{field_name}"'
+        )
       if field_value is None:
         # field=None is the same as no field at all.
         continue
@@ -566,8 +554,9 @@ def _GetFieldByName(message_descriptor, field_name):
   try:
     return message_descriptor.fields_by_name[field_name]
   except KeyError:
-    raise ValueError('Protocol message %s has no "%s" field.' %
-                     (message_descriptor.name, field_name))
+    raise ValueError(
+        f'Protocol message {message_descriptor.name} has no "{field_name}" field.'
+    )
 
 
 def _AddPropertiesForFields(descriptor, cls):
@@ -595,7 +584,7 @@ def _AddPropertiesForField(field, cls):
   # handle specially here.
   assert _FieldDescriptor.MAX_CPPTYPE == 10
 
-  constant_name = field.name.upper() + '_FIELD_NUMBER'
+  constant_name = f'{field.name.upper()}_FIELD_NUMBER'
   setattr(cls, constant_name, field.number)
 
   if field.label == _FieldDescriptor.LABEL_REPEATED:
@@ -645,8 +634,9 @@ def _AddPropertiesForRepeatedField(field, cls):
       #   in several other locations in this file.
       field_value = self._fields.setdefault(field, field_value)
     return field_value
+
   getter.__module__ = None
-  getter.__doc__ = 'Getter for %s.' % proto_field_name
+  getter.__doc__ = f'Getter for {proto_field_name}.'
 
   # We define a setter just so we can throw an exception with a more
   # helpful error message.
@@ -654,7 +644,7 @@ def _AddPropertiesForRepeatedField(field, cls):
     raise AttributeError('Assignment not allowed to repeated field '
                          '"%s" in protocol message object.' % proto_field_name)
 
-  doc = 'Magic attribute generated for "%s" proto field.' % proto_field_name
+  doc = f'Magic attribute generated for "{proto_field_name}" proto field.'
   setattr(cls, property_name, _FieldProperty(field, getter, setter, doc=doc))
 
 
@@ -678,8 +668,9 @@ def _AddPropertiesForNonRepeatedScalarField(field, cls):
     # TODO(protobuf-team): This may be broken since there may not be
     # default_value.  Combine with has_default_value somehow.
     return self._fields.get(field, default_value)
+
   getter.__module__ = None
-  getter.__doc__ = 'Getter for %s.' % proto_field_name
+  getter.__doc__ = f'Getter for {proto_field_name}.'
 
   def field_setter(self, new_value):
     # pylint: disable=protected-access
@@ -707,10 +698,10 @@ def _AddPropertiesForNonRepeatedScalarField(field, cls):
     setter = field_setter
 
   setter.__module__ = None
-  setter.__doc__ = 'Setter for %s.' % proto_field_name
+  setter.__doc__ = f'Setter for {proto_field_name}.'
 
   # Add a property to encapsulate the getter/setter.
-  doc = 'Magic attribute generated for "%s" proto field.' % proto_field_name
+  doc = f'Magic attribute generated for "{proto_field_name}" proto field.'
   setattr(cls, property_name, _FieldProperty(field, getter, setter, doc=doc))
 
 
@@ -744,8 +735,9 @@ def _AddPropertiesForNonRepeatedCompositeField(field, cls):
       #   in several other locations in this file.
       field_value = self._fields.setdefault(field, field_value)
     return field_value
+
   getter.__module__ = None
-  getter.__doc__ = 'Getter for %s.' % proto_field_name
+  getter.__doc__ = f'Getter for {proto_field_name}.'
 
   # We define a setter just so we can throw an exception with a more
   # helpful error message.
@@ -754,7 +746,7 @@ def _AddPropertiesForNonRepeatedCompositeField(field, cls):
                          '"%s" in protocol message object.' % proto_field_name)
 
   # Add a property to encapsulate the getter.
-  doc = 'Magic attribute generated for "%s" proto field.' % proto_field_name
+  doc = f'Magic attribute generated for "{proto_field_name}" proto field.'
   setattr(cls, property_name, _FieldProperty(field, getter, setter, doc=doc))
 
 
@@ -762,7 +754,7 @@ def _AddPropertiesForExtensions(descriptor, cls):
   """Adds properties for all fields in this protocol message type."""
   extensions = descriptor.extensions_by_name
   for extension_name, extension_field in extensions.items():
-    constant_name = extension_name.upper() + '_FIELD_NUMBER'
+    constant_name = f'{extension_name.upper()}_FIELD_NUMBER'
     setattr(cls, constant_name, extension_field.number)
 
   # TODO(amauryfa): Migrate all users of these attributes to functions like
@@ -863,8 +855,9 @@ def _AddClearFieldMethod(message_descriptor, cls):
         else:
           return
       except KeyError:
-        raise ValueError('Protocol message %s has no "%s" field.' %
-                         (message_descriptor.name, field_name))
+        raise ValueError(
+            f'Protocol message {message_descriptor.name} has no "{field_name}" field.'
+        )
 
     if field in self._fields:
       # To match the C++ implementation, we need to invalidate iterators
@@ -905,13 +898,14 @@ def _AddHasExtensionMethod(cls):
   def HasExtension(self, field_descriptor):
     extension_dict._VerifyExtensionHandle(self, field_descriptor)
     if field_descriptor.label == _FieldDescriptor.LABEL_REPEATED:
-      raise KeyError('"%s" is repeated.' % field_descriptor.full_name)
+      raise KeyError(f'"{field_descriptor.full_name}" is repeated.')
 
     if field_descriptor.cpp_type == _FieldDescriptor.CPPTYPE_MESSAGE:
       value = self._fields.get(field_descriptor)
       return value is not None and value._is_present_in_parent
     else:
       return field_descriptor in self._fields
+
   cls.HasExtension = HasExtension
 
 def _InternalUnpackAny(msg):
@@ -973,12 +967,8 @@ def _AddEqualsMethod(message_descriptor, cls):
     if not self.ListFields() == other.ListFields():
       return False
 
-    # TODO(jieluo): Fix UnknownFieldSet to consider MessageSet extensions,
-    # then use it for the comparison.
-    unknown_fields = list(self._unknown_fields)
-    unknown_fields.sort()
-    other_unknown_fields = list(other._unknown_fields)
-    other_unknown_fields.sort()
+    unknown_fields = sorted(self._unknown_fields)
+    other_unknown_fields = sorted(other._unknown_fields)
     return unknown_fields == other_unknown_fields
 
   cls.__eq__ = __eq__
@@ -1060,9 +1050,10 @@ def _AddSerializeToStringMethod(message_descriptor, cls):
     # Check if the message has all of its required fields set.
     if not self.IsInitialized():
       raise message_mod.EncodeError(
-          'Message %s is missing required fields: %s' % (
-          self.DESCRIPTOR.full_name, ','.join(self.FindInitializationErrors())))
+          f"Message {self.DESCRIPTOR.full_name} is missing required fields: {','.join(self.FindInitializationErrors())}"
+      )
     return self.SerializePartialToString(**kwargs)
+
   cls.SerializeToString = SerializeToString
 
 
@@ -1242,21 +1233,14 @@ def _AddIsInitializedMethod(message_descriptor, cls):
 
     for field, value in self.ListFields():
       if field.cpp_type == _FieldDescriptor.CPPTYPE_MESSAGE:
-        if field.is_extension:
-          name = '(%s)' % field.full_name
-        else:
-          name = field.name
-
+        name = f'({field.full_name})' if field.is_extension else field.name
         if _IsMapField(field):
           if _IsMessageMapField(field):
             for key in value:
               element = value[key]
-              prefix = '%s[%s].' % (name, key)
+              prefix = f'{name}[{key}].'
               sub_errors = element.FindInitializationErrors()
               errors += [prefix + error for error in sub_errors]
-          else:
-            # ScalarMaps can't have any initialization errors.
-            pass
         elif field.label == _FieldDescriptor.LABEL_REPEATED:
           for i in range(len(value)):
             element = value[i]
@@ -1264,7 +1248,7 @@ def _AddIsInitializedMethod(message_descriptor, cls):
             sub_errors = element.FindInitializationErrors()
             errors += [prefix + error for error in sub_errors]
         else:
-          prefix = name + '.'
+          prefix = f'{name}.'
           sub_errors = value.FindInitializationErrors()
           errors += [prefix + error for error in sub_errors]
 
@@ -1278,7 +1262,7 @@ def _FullyQualifiedClassName(klass):
   name = getattr(klass, '__qualname__', klass.__name__)
   if module in (None, 'builtins', '__builtin__'):
     return name
-  return module + '.' + name
+  return f'{module}.{name}'
 
 
 def _AddMergeFromMethod(cls):
@@ -1336,8 +1320,7 @@ def _AddWhichOneofMethod(message_descriptor, cls):
     try:
       field = message_descriptor.oneofs_by_name[oneof_name]
     except KeyError:
-      raise ValueError(
-          'Protocol message has no oneof "%s" field.' % oneof_name)
+      raise ValueError(f'Protocol message has no oneof "{oneof_name}" field.')
 
     nested_field = self._oneofs.get(field, None)
     if nested_field is not None and self.HasField(nested_field.name):

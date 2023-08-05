@@ -67,12 +67,10 @@ if _USE_C_DESCRIPTORS:
   # type written in C++.
   class DescriptorMetaclass(type):
 
-    def __instancecheck__(cls, obj):
-      if super(DescriptorMetaclass, cls).__instancecheck__(obj):
+    def __instancecheck__(self, obj):
+      if super(DescriptorMetaclass, self).__instancecheck__(obj):
         return True
-      if isinstance(obj, cls._C_DESCRIPTOR_CLASS):
-        return True
-      return False
+      return isinstance(obj, self._C_DESCRIPTOR_CLASS)
 else:
   # The standard metaclass; nothing changes.
   DescriptorMetaclass = type
@@ -173,8 +171,7 @@ class DescriptorBase(metaclass=DescriptorMetaclass):
       options_class = getattr(descriptor_pb2,
                               self._options_class_name)
     except AttributeError:
-      raise RuntimeError('Unknown options class name %s!' %
-                         (self._options_class_name))
+      raise RuntimeError(f'Unknown options class name {self._options_class_name}!')
 
     with _lock:
       if self._serialized_options is None:
@@ -345,30 +342,29 @@ class Descriptor(_NestedDescriptorBase):
     self.fields = fields
     for field in self.fields:
       field.containing_type = self
-    self.fields_by_number = dict((f.number, f) for f in fields)
-    self.fields_by_name = dict((f.name, f) for f in fields)
+    self.fields_by_number = {f.number: f for f in fields}
+    self.fields_by_name = {f.name: f for f in fields}
     self._fields_by_camelcase_name = None
 
     self.nested_types = nested_types
     for nested_type in nested_types:
       nested_type.containing_type = self
-    self.nested_types_by_name = dict((t.name, t) for t in nested_types)
+    self.nested_types_by_name = {t.name: t for t in nested_types}
 
     self.enum_types = enum_types
     for enum_type in self.enum_types:
       enum_type.containing_type = self
-    self.enum_types_by_name = dict((t.name, t) for t in enum_types)
-    self.enum_values_by_name = dict(
-        (v.name, v) for t in enum_types for v in t.values)
+    self.enum_types_by_name = {t.name: t for t in enum_types}
+    self.enum_values_by_name = {v.name: v for t in enum_types for v in t.values}
 
     self.extensions = extensions
     for extension in self.extensions:
       extension.extension_scope = self
-    self.extensions_by_name = dict((f.name, f) for f in extensions)
+    self.extensions_by_name = {f.name: f for f in extensions}
     self.is_extendable = is_extendable
     self.extension_ranges = extension_ranges
     self.oneofs = oneofs if oneofs is not None else []
-    self.oneofs_by_name = dict((o.name, o) for o in self.oneofs)
+    self.oneofs_by_name = {o.name: o for o in self.oneofs}
     for oneof in self.oneofs:
       oneof.containing_type = self
     self.syntax = syntax or "proto2"
@@ -379,8 +375,7 @@ class Descriptor(_NestedDescriptorBase):
     :attr:`FieldDescriptor.camelcase_name`.
     """
     if self._fields_by_camelcase_name is None:
-      self._fields_by_camelcase_name = dict(
-          (f.camelcase_name, f) for f in self.fields)
+      self._fields_by_camelcase_name = {f.camelcase_name: f for f in self.fields}
     return self._fields_by_camelcase_name
 
   def EnumValueName(self, enum, value):
@@ -586,10 +581,7 @@ class FieldDescriptor(DescriptorBase):
     self.full_name = full_name
     self.file = file
     self._camelcase_name = None
-    if json_name is None:
-      self.json_name = _ToJsonName(name)
-    else:
-      self.json_name = json_name
+    self.json_name = _ToJsonName(name) if json_name is None else json_name
     self.index = index
     self.number = number
     self.type = type
@@ -605,11 +597,10 @@ class FieldDescriptor(DescriptorBase):
     self.containing_oneof = containing_oneof
     if api_implementation.Type() == 'python':
       self._cdescriptor = None
+    elif is_extension:
+      self._cdescriptor = _message.default_pool.FindExtensionByName(full_name)
     else:
-      if is_extension:
-        self._cdescriptor = _message.default_pool.FindExtensionByName(full_name)
-      else:
-        self._cdescriptor = _message.default_pool.FindFieldByName(full_name)
+      self._cdescriptor = _message.default_pool.FindFieldByName(full_name)
 
   @property
   def camelcase_name(self):
@@ -646,10 +637,12 @@ class FieldDescriptor(DescriptorBase):
     if self.label != FieldDescriptor.LABEL_REPEATED:
       return False
     field_type = self.type
-    if (field_type == FieldDescriptor.TYPE_STRING or
-        field_type == FieldDescriptor.TYPE_GROUP or
-        field_type == FieldDescriptor.TYPE_MESSAGE or
-        field_type == FieldDescriptor.TYPE_BYTES):
+    if field_type in [
+        FieldDescriptor.TYPE_STRING,
+        FieldDescriptor.TYPE_GROUP,
+        FieldDescriptor.TYPE_MESSAGE,
+        FieldDescriptor.TYPE_BYTES,
+    ]:
       return False
     if self.containing_type.syntax == 'proto2':
       return self.has_options and self.GetOptions().packed
@@ -676,7 +669,7 @@ class FieldDescriptor(DescriptorBase):
     try:
       return FieldDescriptor._PYTHON_TO_CPP_PROTO_TYPE_MAP[proto_type]
     except KeyError:
-      raise TypeTransformationError('Unknown proto_type: %s' % proto_type)
+      raise TypeTransformationError(f'Unknown proto_type: {proto_type}')
 
 
 class EnumDescriptor(_NestedDescriptorBase):
@@ -733,9 +726,9 @@ class EnumDescriptor(_NestedDescriptorBase):
     self.values = values
     for value in self.values:
       value.type = self
-    self.values_by_name = dict((v.name, v) for v in values)
+    self.values_by_name = {v.name: v for v in values}
     # Values are reversed to ensure that the first alias is retained.
-    self.values_by_number = dict((v.number, v) for v in reversed(values))
+    self.values_by_number = {v.number: v for v in reversed(values)}
 
   @property
   def is_closed(self):
@@ -904,7 +897,7 @@ class ServiceDescriptor(_NestedDescriptorBase):
         serialized_end=serialized_end, serialized_options=serialized_options)
     self.index = index
     self.methods = methods
-    self.methods_by_name = dict((m.name, m) for m in methods)
+    self.methods_by_name = {m.name: m for m in methods}
     # Set the containing service for each method in this service.
     for method in self.methods:
       method.containing_service = self
@@ -1194,10 +1187,10 @@ def MakeDescriptor(desc_proto, package='', build_file_if_cpp=True,
 
     if package:
       file_descriptor_proto.name = os.path.join(package.replace('.', '/'),
-                                                proto_name + '.proto')
+                                                f'{proto_name}.proto')
       file_descriptor_proto.package = package
     else:
-      file_descriptor_proto.name = proto_name + '.proto'
+      file_descriptor_proto.name = f'{proto_name}.proto'
 
     _message.default_pool.Add(file_descriptor_proto)
     result = _message.default_pool.FindFileByName(file_descriptor_proto.name)
@@ -1237,10 +1230,7 @@ def MakeDescriptor(desc_proto, package='', build_file_if_cpp=True,
     full_name = '.'.join(full_message_name + [field_proto.name])
     enum_desc = None
     nested_desc = None
-    if field_proto.json_name:
-      json_name = field_proto.json_name
-    else:
-      json_name = None
+    json_name = field_proto.json_name if field_proto.json_name else None
     if field_proto.HasField('type_name'):
       type_name = field_proto.type_name
       full_type_name = '.'.join(full_message_name +

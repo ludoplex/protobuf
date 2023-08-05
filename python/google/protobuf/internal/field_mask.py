@@ -40,9 +40,7 @@ class FieldMask(object):
 
   def ToJsonString(self):
     """Converts FieldMask to string according to proto3 JSON spec."""
-    camelcase_paths = []
-    for path in self.paths:
-      camelcase_paths.append(_SnakeCaseToCamelCase(path))
+    camelcase_paths = [_SnakeCaseToCamelCase(path) for path in self.paths]
     return ','.join(camelcase_paths)
 
   def FromJsonString(self, value):
@@ -56,10 +54,7 @@ class FieldMask(object):
 
   def IsValidForDescriptor(self, message_descriptor):
     """Checks whether the FieldMask is valid for Message Descriptor."""
-    for path in self.paths:
-      if not _IsValidPath(message_descriptor, path):
-        return False
-    return True
+    return all(_IsValidPath(message_descriptor, path) for path in self.paths)
 
   def AllFieldsFromDescriptor(self, message_descriptor):
     """Gets all direct fields of Message Descriptor to FieldMask."""
@@ -149,14 +144,13 @@ def _SnakeCaseToCamelCase(path_name):
           'Fail to print FieldMask to Json string: Path name '
           '{0} must not contain uppercase letters.'.format(path_name))
     if after_underscore:
-      if c.islower():
-        result.append(c.upper())
-        after_underscore = False
-      else:
+      if not c.islower():
         raise ValueError(
             'Fail to print FieldMask to Json string: The '
             'character after a "_" must be a lowercase letter '
             'in path name {0}.'.format(path_name))
+      result.append(c.upper())
+      after_underscore = False
     elif c == '_':
       after_underscore = True
     else:
@@ -261,7 +255,7 @@ class _FieldMaskTree(object):
     if not node:
       self.AddPath(prefix)
     for name in node:
-      child_path = prefix + '.' + name
+      child_path = f'{prefix}.{name}'
       self.AddLeafNodes(child_path, node[name])
 
   def MergeMessage(
@@ -277,9 +271,7 @@ def _StrConvert(value):
   # This file is imported by c extension and some methods like ClearField
   # requires string for the field name. py2/py3 has different text
   # type and may use unicode.
-  if not isinstance(value, str):
-    return value.encode('utf-8')
-  return value
+  return value.encode('utf-8') if not isinstance(value, str) else value
 
 
 def _MergeMessage(
@@ -310,14 +302,13 @@ def _MergeMessage(
       repeated_source = getattr(source, name)
       repeated_destination = getattr(destination, name)
       repeated_destination.MergeFrom(repeated_source)
+    elif field.cpp_type == FieldDescriptor.CPPTYPE_MESSAGE:
+      if replace_message:
+        destination.ClearField(_StrConvert(name))
+      if source.HasField(name):
+        getattr(destination, name).MergeFrom(getattr(source, name))
     else:
-      if field.cpp_type == FieldDescriptor.CPPTYPE_MESSAGE:
-        if replace_message:
-          destination.ClearField(_StrConvert(name))
-        if source.HasField(name):
-          getattr(destination, name).MergeFrom(getattr(source, name))
-      else:
-        setattr(destination, name, getattr(source, name))
+      setattr(destination, name, getattr(source, name))
 
 
 def _AddFieldPaths(node, prefix, field_mask):
@@ -326,8 +317,5 @@ def _AddFieldPaths(node, prefix, field_mask):
     field_mask.paths.append(prefix)
     return
   for name in sorted(node):
-    if prefix:
-      child_path = prefix + '.' + name
-    else:
-      child_path = name
+    child_path = f'{prefix}.{name}' if prefix else name
     _AddFieldPaths(node[name], child_path, field_mask)

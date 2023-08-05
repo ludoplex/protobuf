@@ -42,9 +42,7 @@ def _ApiVersionToImplementationType(api_version):
     return 'cpp'
   if api_version == 1:
     raise ValueError('api_version=1 is no longer supported.')
-  if api_version == 0:
-    return 'python'
-  return None
+  return 'python' if api_version == 0 else None
 
 
 _implementation_type = None
@@ -61,11 +59,10 @@ except ImportError:
 
 def _CanImport(mod_name):
   try:
-    mod = importlib.import_module(mod_name)
-    # Work around a known issue in the classic bootstrap .par import hook.
-    if not mod:
-      raise ImportError(mod_name + ' import succeeded but was None')
-    return True
+    if mod := importlib.import_module(mod_name):
+      return True
+    else:
+      raise ImportError(f'{mod_name} import succeeded but was None')
   except ImportError:
     return False
 
@@ -109,8 +106,6 @@ if _implementation_type == 'cpp':
     # TODO(jieluo): fail back to python
     warnings.warn(
         'Selected implementation cpp is not available.')
-    pass
-
 if _implementation_type == 'upb':
   try:
     # pylint: disable=g-import-not-at-top
@@ -121,8 +116,6 @@ if _implementation_type == 'upb':
     warnings.warn('Selected implementation upb is not available. '
                   'Falling back to the python implementation.')
     _implementation_type = 'python'
-    pass
-
 # Detect if serialization should be deterministic by default
 try:
   # The presence of this module in a build allows the proto implementation to

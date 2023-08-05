@@ -338,7 +338,7 @@ class DescriptorPoolTestBase(object):
     another_field = factory_test2.extensions_by_name['another_field']
 
     extensions = self.pool.FindAllExtensions(factory1_message)
-    expected_extension_numbers = set([one_more_field, another_field])
+    expected_extension_numbers = {one_more_field, another_field}
     self.assertEqual(expected_extension_numbers, set(extensions))
     # Verify that mutating the returned list does not affect the pool.
     extensions.append('unexpected_element')
@@ -538,9 +538,7 @@ class DescriptorPoolTestBase(object):
         unittest_pb2.DESCRIPTOR.serialized_pb)
     conflict_fd = copy.deepcopy(unittest_fd)
     conflict_fd.name = 'other_file'
-    if api_implementation.Type() != 'python':
-        pass
-    else:
+    if api_implementation.Type() == 'python':
       pool = copy.deepcopy(self.pool)
       file_descriptor = unittest_pb2.DESCRIPTOR
       pool._AddDescriptor(
@@ -893,18 +891,20 @@ class AddDescriptorTest(unittest.TestCase):
     self.assertEqual(
         'protobuf_unittest.TestAllTypes',
         pool.FindMessageTypeByName(
-            prefix + 'protobuf_unittest.TestAllTypes').full_name)
+            f'{prefix}protobuf_unittest.TestAllTypes').full_name,
+    )
 
     # AddDescriptor is not recursive.
     with self.assertRaises(KeyError):
       pool.FindMessageTypeByName(
-          prefix + 'protobuf_unittest.TestAllTypes.NestedMessage')
+          f'{prefix}protobuf_unittest.TestAllTypes.NestedMessage')
 
     pool._AddDescriptor(unittest_pb2.TestAllTypes.NestedMessage.DESCRIPTOR)
     self.assertEqual(
         'protobuf_unittest.TestAllTypes.NestedMessage',
         pool.FindMessageTypeByName(
-            prefix + 'protobuf_unittest.TestAllTypes.NestedMessage').full_name)
+            f'{prefix}protobuf_unittest.TestAllTypes.NestedMessage').full_name,
+    )
 
     # Files are implicitly also indexed when messages are added.
     self.assertEqual(
@@ -915,7 +915,8 @@ class AddDescriptorTest(unittest.TestCase):
     self.assertEqual(
         'google/protobuf/unittest.proto',
         pool.FindFileContainingSymbol(
-            prefix + 'protobuf_unittest.TestAllTypes.NestedMessage').name)
+            f'{prefix}protobuf_unittest.TestAllTypes.NestedMessage').name,
+    )
 
   @unittest.skipIf(api_implementation.Type() != 'python',
                    'Only pure python allows _Add*()')
@@ -931,17 +932,18 @@ class AddDescriptorTest(unittest.TestCase):
     self.assertEqual(
         'protobuf_unittest.ForeignEnum',
         pool.FindEnumTypeByName(
-            prefix + 'protobuf_unittest.ForeignEnum').full_name)
+            f'{prefix}protobuf_unittest.ForeignEnum').full_name,
+    )
 
     # AddEnumDescriptor is not recursive.
     with self.assertRaises(KeyError):
-      pool.FindEnumTypeByName(
-          prefix + 'protobuf_unittest.ForeignEnum.NestedEnum')
+      pool.FindEnumTypeByName(f'{prefix}protobuf_unittest.ForeignEnum.NestedEnum')
 
     self.assertEqual(
         'protobuf_unittest.TestAllTypes.NestedEnum',
         pool.FindEnumTypeByName(
-            prefix + 'protobuf_unittest.TestAllTypes.NestedEnum').full_name)
+            f'{prefix}protobuf_unittest.TestAllTypes.NestedEnum').full_name,
+    )
 
     # Files are implicitly also indexed when enums are added.
     self.assertEqual(
@@ -952,7 +954,8 @@ class AddDescriptorTest(unittest.TestCase):
     self.assertEqual(
         'google/protobuf/unittest.proto',
         pool.FindFileContainingSymbol(
-            prefix + 'protobuf_unittest.TestAllTypes.NestedEnum').name)
+            f'{prefix}protobuf_unittest.TestAllTypes.NestedEnum').name,
+    )
 
   @unittest.skipIf(api_implementation.Type() != 'python',
                    'Only pure python allows _Add*()')

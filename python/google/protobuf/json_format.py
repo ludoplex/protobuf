@@ -190,10 +190,7 @@ class _Printer(object):
     self.preserving_proto_field_name = preserving_proto_field_name
     self.use_integers_for_enums = use_integers_for_enums
     self.descriptor_pool = descriptor_pool
-    if float_precision:
-      self.float_format = '.{}g'.format(float_precision)
-    else:
-      self.float_format = None
+    self.float_format = f'.{float_precision}g' if float_precision else None
 
   def ToJsonString(self, message, indent, sort_keys, ensure_ascii):
     js = self._MessageToJsonObject(message)
@@ -217,20 +214,14 @@ class _Printer(object):
 
     try:
       for field, value in fields:
-        if self.preserving_proto_field_name:
-          name = field.name
-        else:
-          name = field.json_name
+        name = field.name if self.preserving_proto_field_name else field.json_name
         if _IsMapEntry(field):
           # Convert a map field.
           v_field = field.message_type.fields_by_name['value']
           js_map = {}
           for key in value:
             if isinstance(key, bool):
-              if key:
-                recorded_key = 'true'
-              else:
-                recorded_key = 'false'
+              recorded_key = 'true' if key else 'false'
             else:
               recorded_key = str(key)
             js_map[recorded_key] = self._FieldToJsonObject(
@@ -241,7 +232,7 @@ class _Printer(object):
           js[name] = [self._FieldToJsonObject(field, k)
                       for k in value]
         elif field.is_extension:
-          name = '[%s]' % field.full_name
+          name = f'[{field.full_name}]'
           js[name] = self._FieldToJsonObject(field, value)
         else:
           js[name] = self._FieldToJsonObject(field, value)
@@ -255,10 +246,7 @@ class _Printer(object):
                field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE) or
               field.containing_oneof):
             continue
-          if self.preserving_proto_field_name:
-            name = field.name
-          else:
-            name = field.json_name
+          name = field.name if self.preserving_proto_field_name else field.json_name
           if name in js:
             # Skip the field which has been serialized already.
             continue
@@ -287,12 +275,11 @@ class _Printer(object):
       enum_value = field.enum_type.values_by_number.get(value, None)
       if enum_value is not None:
         return enum_value.name
+      if field.enum_type.is_closed:
+        raise SerializeToJsonError('Enum field contains an integer value '
+                                   'which can not mapped to an enum value.')
       else:
-        if field.enum_type.is_closed:
-          raise SerializeToJsonError('Enum field contains an integer value '
-                                     'which can not mapped to an enum value.')
-        else:
-          return value
+        return value
     elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
       if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
         # Use base64 Data encoding for bytes
@@ -305,10 +292,7 @@ class _Printer(object):
       return str(value)
     elif field.cpp_type in _FLOAT_TYPES:
       if math.isinf(value):
-        if value < 0.0:
-          return _NEG_INFINITY
-        else:
-          return _INFINITY
+        return _NEG_INFINITY if value < 0.0 else _INFINITY
       if math.isnan(value):
         return _NAN
       if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_FLOAT:
@@ -376,10 +360,7 @@ class _Printer(object):
   def _StructMessageToJsonObject(self, message):
     """Converts Struct message according to Proto3 JSON Specification."""
     fields = message.fields
-    ret = {}
-    for key in fields:
-      ret[key] = self._ValueMessageToJsonObject(fields[key])
-    return ret
+    return {key: self._ValueMessageToJsonObject(fields[key]) for key in fields}
 
   def _WrapperMessageToJsonObject(self, message):
     return self._FieldToJsonObject(
@@ -525,8 +506,7 @@ class _Parser(object):
     """
     names = []
     message_descriptor = message.DESCRIPTOR
-    fields_by_json_name = dict((f.json_name, f)
-                               for f in message_descriptor.fields)
+    fields_by_json_name = {f.json_name: f for f in message_descriptor.fields}
     for name in js:
       try:
         field = fields_by_json_name.get(name, None)
@@ -617,21 +597,18 @@ class _Parser(object):
                   _ConvertScalarFieldValue(
                       item, field, '{0}.{1}[{2}]'.format(path, name, index)))
         elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
-          if field.is_extension:
-            sub_message = message.Extensions[field]
-          else:
-            sub_message = getattr(message, field.name)
+          sub_message = (message.Extensions[field]
+                         if field.is_extension else getattr(message, field.name))
           sub_message.SetInParent()
           self.ConvertMessage(value, sub_message, '{0}.{1}'.format(path, name))
+        elif field.is_extension:
+          message.Extensions[field] = _ConvertScalarFieldValue(
+              value, field, '{0}.{1}'.format(path, name))
         else:
-          if field.is_extension:
-            message.Extensions[field] = _ConvertScalarFieldValue(
-                value, field, '{0}.{1}'.format(path, name))
-          else:
-            setattr(
-                message, field.name,
-                _ConvertScalarFieldValue(value, field,
-                                         '{0}.{1}'.format(path, name)))
+          setattr(
+              message, field.name,
+              _ConvertScalarFieldValue(value, field,
+                                       '{0}.{1}'.format(path, name)))
       except ParseError as e:
         if field and field.containing_oneof is None:
           raise ParseError(
@@ -639,11 +616,7 @@ class _Parser(object):
           ) from e
         else:
           raise ParseError(str(e)) from e
-      except ValueError as e:
-        raise ParseError(
-          'Failed to parse {0} field: {1}.'.format(name, e)
-        ) from e
-      except TypeError as e:
+      except (ValueError, TypeError) as e:
         raise ParseError(
           'Failed to parse {0} field: {1}.'.format(name, e)
         ) from e
@@ -791,10 +764,7 @@ def _ConvertScalarFieldValue(value, field, path, require_str=False):
       return _ConvertBool(value, require_str)
     elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
       if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
-        if isinstance(value, str):
-          encoded = value.encode('utf-8')
-        else:
-          encoded = value
+        encoded = value.encode('utf-8') if isinstance(value, str) else value
         # Add extra padding '='
         padded_value = encoded + b'=' * (4 - len(encoded) % 4)
         return base64.urlsafe_b64decode(padded_value)
@@ -814,12 +784,12 @@ def _ConvertScalarFieldValue(value, field, path, require_str=False):
         except ValueError as e:
           raise ParseError('Invalid enum value {0} for enum type {1}'.format(
               value, field.enum_type.full_name)) from e
-        if enum_value is None:
-          if field.enum_type.is_closed:
-            raise ParseError('Invalid enum value {0} for enum type {1}'.format(
-                value, field.enum_type.full_name))
-          else:
-            return number
+      if enum_value is None:
+        if field.enum_type.is_closed:
+          raise ParseError('Invalid enum value {0} for enum type {1}'.format(
+              value, field.enum_type.full_name))
+        else:
+          return number
       return enum_value.number
   except ParseError as e:
     raise ParseError('{0} at {1}'.format(e, path)) from e
